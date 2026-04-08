@@ -1,13 +1,12 @@
 "use client"
 
-import { useState } from "react"
 import { Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { AnimatedNumber } from "@/components/ui/animated-number"
 import { ScrambleText } from "@/components/animations/ScrambleText"
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card"
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet"
-import { fetchModelDetailedStats, type ModelDetailedStats } from "@/lib/supabase/db"
+import { STATIC_MODEL_DETAILS, type StaticModelDetailedStats } from "@/lib/static-data"
 import { useMediaQuery } from "@/hooks/use-media-query"
 
 interface RankingEntry {
@@ -27,35 +26,7 @@ interface RankingsCardProps {
 const ROW_STAGGER_MS = 80
 
 function ModelHoverContent({ modelId }: { modelId: string }) {
-  const [stats, setStats] = useState<ModelDetailedStats | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [hasFetched, setHasFetched] = useState(false)
-
-  const loadStats = async () => {
-    if (hasFetched) return
-    setHasFetched(true)
-    setIsLoading(true)
-    const data = await fetchModelDetailedStats(modelId)
-    setStats(data)
-    setIsLoading(false)
-  }
-
-  // Load stats when component mounts (hover opens)
-  if (!hasFetched) {
-    loadStats()
-  }
-
-  if (isLoading) {
-    return (
-      <div className="min-w-[280px] p-1">
-        <div className="animate-pulse space-y-2">
-          <div className="h-4 bg-white/10 rounded w-3/4" />
-          <div className="h-3 bg-white/10 rounded w-1/2" />
-          <div className="h-3 bg-white/10 rounded w-2/3" />
-        </div>
-      </div>
-    )
-  }
+  const stats: StaticModelDetailedStats | undefined = STATIC_MODEL_DETAILS[modelId]
 
   if (!stats) {
     return (

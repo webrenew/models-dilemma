@@ -1,206 +1,47 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
-import { GameFeed } from "@/components/game-feed"
 import { StatsCard } from "@/components/stats-card"
 import { RankingsCard } from "@/components/rankings-card"
 import { StrategyStats } from "@/components/strategy-stats"
 import { RoundsCard } from "@/components/rounds-card"
 import { WhitepaperModal } from "@/components/whitepaper-modal"
-import { PlayGameModal } from "@/components/play-game-modal"
 import { ExperimentDesign } from "@/components/experiment-design"
 import { Footer } from "@/components/footer"
-import { StatsSkeleton, RankingsSkeleton, StrategyStatsSkeleton, RoundsCardSkeleton } from "@/components/ui/skeleton"
 import { ScrambleText, ScrambleTextOnHover } from "@/components/animations/ScrambleText"
-import type { GameRecord } from "@/lib/game-logic"
-import { MODEL_COUNT, AI_MODELS } from "@/lib/models"
-import { fetchGameStats, fetchModelRankings, exportGameDataCSV, fetchStrategyStats } from "@/lib/supabase/db"
-import { createClient } from "@/lib/supabase/client"
-import Link from "next/link"
+import { MODEL_COUNT } from "@/lib/models"
+import { STATIC_GAME_STATS, STATIC_RANKINGS, STATIC_STRATEGY_STATS } from "@/lib/static-data"
 
-// Get active model IDs for filtering rankings
-const ACTIVE_MODEL_IDS = AI_MODELS.map((m) => m.id)
+const rankings = STATIC_RANKINGS.map((r, i) => ({
+  rank: i + 1,
+  modelId: r.modelId,
+  totalPoints: r.totalPoints,
+  wins: r.wins,
+  losses: r.losses,
+}))
 
 export default function Home() {
-  const [userGames, setUserGames] = useState<GameRecord[]>([])
   const [whitepaperOpen, setWhitepaperOpen] = useState(false)
-  const [playGameOpen, setPlayGameOpen] = useState(false)
-  const [liveMatchCount, setLiveMatchCount] = useState(0)
-  const [showBanner, setShowBanner] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
-  const supabaseRef = useRef(createClient())
 
-  const [dbStats, setDbStats] = useState({ totalGames: 0, controlRounds: 0, hiddenAgendaRounds: 0 })
-  const [dbRankings, setDbRankings] = useState<
-    { modelId: string; displayName: string; totalPoints: number; gamesPlayed: number; wins: number; losses: number }[]
-  >([])
-  const [strategyStats, setStrategyStats] = useState({
-    forgiving: 0,
-    forgivingTotal: 0,
-    retaliating: 0,
-    retaliatingTotal: 0,
-    nice: 0,
-    niceTotal: 0,
-    nonEnvious: 0,
-    nonEnviousTotal: 0,
-  })
-
-  const loadStats = useCallback(async (showLoading = false) => {
-    if (showLoading) setIsLoading(true)
-    // Fetch all stats in parallel for faster loading
-    // Pass active model IDs to filter out old/inactive models from rankings
-    const [stats, rankings, strategies] = await Promise.all([
-      fetchGameStats(),
-      fetchModelRankings(10, ACTIVE_MODEL_IDS),
-      fetchStrategyStats(),
-    ])
-    setDbStats(stats)
-    setDbRankings(rankings)
-    setStrategyStats(strategies)
-    setIsLoading(false)
-  }, [])
-
-  // Load stats on mount and subscribe to Realtime updates
-  useEffect(() => {
-    loadStats(true) // Show loading on initial load
-
-    // Subscribe to game completions via Realtime - no polling needed
-    const channel = supabaseRef.current
-      .channel('stats-realtime')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'game_rounds',
-          filter: 'is_final_round=eq.true',
-        },
-        () => {
-          // Refresh stats when a game completes
-          loadStats(false)
-        }
-      )
-      .subscribe()
-
-    return () => {
-      supabaseRef.current.removeChannel(channel)
-    }
-  }, [loadStats])
-
-  const gamesPlayed = dbStats.totalGames
-  const modelsAvailable = MODEL_COUNT
-  const controlRounds = dbStats.controlRounds
-  const hiddenAgendaRounds = dbStats.hiddenAgendaRounds
-
-  const rankings = dbRankings.map((r, i) => ({
-    rank: i + 1,
-    modelId: r.modelId,
-    totalPoints: r.totalPoints,
-    wins: r.wins,
-    losses: r.losses,
-  }))
-
-  const handleGameComplete = useCallback(
-    (gameResult: GameRecord) => {
-      setUserGames((prev) => [gameResult, ...prev])
-      loadStats()
-    },
-    [loadStats],
-  )
-
-  const handleNewGame = useCallback(() => {
-    // Stats are refreshed via Realtime subscription when games complete
-  }, [])
-
-  const exportDataset = useCallback(async () => {
-    const csv = await exportGameDataCSV()
-
-    if (!csv) {
-      alert("No game data to export yet.")
-      return
-    }
-
-    // Compress the CSV using gzip (native browser API)
-    const encoder = new TextEncoder()
-    const csvData = encoder.encode(csv)
-    
-    // Use CompressionStream if available (modern browsers)
-    if (typeof CompressionStream !== "undefined") {
-      const stream = new Blob([csvData]).stream()
-      const compressedStream = stream.pipeThrough(new CompressionStream("gzip"))
-      const compressedBlob = await new Response(compressedStream).blob()
-      
-      const url = URL.createObjectURL(compressedBlob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "prisoners-dilemma-dataset.csv.gz"
-      a.click()
-      URL.revokeObjectURL(url)
-    } else {
-      // Fallback: download uncompressed CSV for older browsers
-      const blob = new Blob([csv], { type: "text/csv" })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement("a")
-      a.href = url
-      a.download = "prisoners-dilemma-dataset.csv"
-      a.click()
-      URL.revokeObjectURL(url)
-    }
-  }, [])
-
-  const handleLiveMatchUpdate = useCallback((count: number) => {
-    setLiveMatchCount(count)
-  }, [])
+  const downloadDataset = () => {
+    window.open("https://modelsdilemma.ai/game_rounds_rows.csv", "_blank")
+  }
 
   return (
     <div className="min-h-screen bg-black text-white">
-      {/* Status Banner */}
-      {showBanner && (
-        <div className="bg-[#2a1700] border-b border-[#ff9300]/20 px-4 py-2 relative">
-          <p className="text-center text-[#ff9300] text-xs sm:text-sm font-mono pr-8">
-            <span className="inline-block w-2 h-2 rounded-full bg-[#ff9300] mr-2 animate-pulse" />
-            Monitoring issue with provider <code className="bg-[#ff9300]/20 px-1.5 py-0.5 rounded">deepseek</code> — temporarily removed from games
-          </p>
-          <button
-            onClick={() => setShowBanner(false)}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-[#ff9300]/60 hover:text-[#ff9300] transition-colors p-1"
-            aria-label="Dismiss banner"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-      )}
-
       <header className="relative top-0 left-0 right-0 flex items-center justify-between px-4 sm:px-8 py-4 sm:py-6">
         <div className="font-mono text-xs sm:text-sm tracking-wider flex items-center gap-4">
-          <ScrambleTextOnHover 
-            text="The Model's Dilemma" 
+          <ScrambleTextOnHover
+            text="The Model's Dilemma"
             className="opacity-80 cursor-default"
             duration={0.5}
           />
         </div>
-        <div className="flex items-center gap-2 sm:gap-4">
-          <Link
-            href="/model-explorer"
-            className="font-mono text-[10px] sm:text-xs uppercase tracking-wider text-white/50 hover:text-white/80 transition-colors"
-          >
-            Model Explorer
-          </Link>
-          {liveMatchCount > 0 && (
-            <span className="font-mono text-[10px] sm:text-xs text-emerald-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              {liveMatchCount} Live
-            </span>
-          )}
-        </div>
       </header>
 
-      <div className="flex flex-col lg:flex-row min-h-screen">
-        <div className="w-full lg:w-[60%] flex flex-col justify-center px-4 sm:px-8 lg:px-12 xl:px-16 2xl:px-20 py-8 lg:pb-12 overflow-visible">
+      <div className="flex flex-col min-h-screen">
+        <div className="w-full max-w-6xl mx-auto flex flex-col justify-center px-4 sm:px-8 lg:px-12 py-8 lg:pb-12 overflow-visible">
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
             <h1 className="font-mono text-3xl sm:text-4xl lg:text-5xl xl:text-6xl text-white leading-tight mb-4 sm:mb-6 text-balance">
               <ScrambleText text="The Model's Dilemma" delayMs={200} duration={1.2} />
@@ -219,13 +60,6 @@ export default function Home() {
                 }}
                 className="font-mono text-xs sm:text-sm uppercase tracking-wider border border-white/15 bg-transparent text-white hover:bg-white/5 px-4 sm:px-6 py-4 sm:py-5 rounded-md cursor-pointer transition-colors"
               />
-              <ScrambleTextOnHover
-                as="button"
-                text="Play Game"
-                duration={0.4}
-                onClick={() => setPlayGameOpen(true)}
-                className="font-mono text-xs sm:text-sm uppercase tracking-wider bg-white text-black hover:bg-white/90 px-4 sm:px-6 py-4 sm:py-5 rounded-md cursor-pointer transition-colors"
-              />
             </div>
           </motion.div>
 
@@ -236,45 +70,21 @@ export default function Home() {
             className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-8 sm:mt-12 lg:mt-16 overflow-visible"
           >
             <div className="col-span-2 flex">
-              {isLoading ? (
-                <RankingsSkeleton />
-              ) : (
-                <RankingsCard rankings={rankings} onExport={exportDataset} />
-              )}
+              <RankingsCard rankings={rankings} onExport={downloadDataset} />
             </div>
             <div className="flex flex-col gap-2">
-              {isLoading ? (
-                <>
-                  <StatsSkeleton />
-                  <StatsSkeleton />
-                  <RoundsCardSkeleton />
-                </>
-              ) : (
-                <>
-                  <StatsCard label="Games Played" value={gamesPlayed} />
-                  <StatsCard label="Models Available" value={modelsAvailable} />
-                  <RoundsCard controlRounds={controlRounds} hiddenAgendaRounds={hiddenAgendaRounds} />
-                </>
-              )}
+              <StatsCard label="Games Played" value={STATIC_GAME_STATS.totalGames} />
+              <StatsCard label="Models Available" value={MODEL_COUNT} />
+              <RoundsCard controlRounds={STATIC_GAME_STATS.controlRounds} hiddenAgendaRounds={STATIC_GAME_STATS.hiddenAgendaRounds} />
             </div>
             <div className="flex">
-              {isLoading ? (
-                <StrategyStatsSkeleton />
-              ) : (
-                <StrategyStats stats={strategyStats} />
-              )}
+              <StrategyStats stats={STATIC_STRATEGY_STATS} />
             </div>
           </motion.div>
-        </div>
-
-        <div className="w-full lg:w-[40%] h-[50vh] lg:h-screen pb-4 lg:pb-8 px-4 lg:px-0 lg:pr-8 z-0">
-          <GameFeed userGames={userGames} onNewGame={handleNewGame} onLiveMatchCountChange={handleLiveMatchUpdate} />
         </div>
       </div>
 
       <WhitepaperModal isOpen={whitepaperOpen} onClose={() => setWhitepaperOpen(false)} />
-
-      <PlayGameModal isOpen={playGameOpen} onClose={() => setPlayGameOpen(false)} onGameComplete={handleGameComplete} />
 
       <ExperimentDesign />
 

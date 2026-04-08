@@ -1,9 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
 import { ChevronDown, Copy, Check, Download } from "lucide-react"
-import { fetchScenarioStats } from "@/lib/supabase/db"
+import { STATIC_SCENARIO_STATS } from "@/lib/static-data"
 
 const PROMPTS = [
   {
@@ -291,27 +291,10 @@ INDEPENDENT
   },
 ]
 
-interface ScenarioStats {
-  overt: { cooperate: number; defect: number; total: number }
-  sales: { cooperate: number; defect: number; total: number }
-  research: { cooperate: number; defect: number; total: number }
-  creator: { cooperate: number; defect: number; total: number }
-}
-
 export function ExperimentDesign() {
   const [selectedPrompt, setSelectedPrompt] = useState(0)
   const [copied, setCopied] = useState(false)
-  const [scenarioStats, setScenarioStats] = useState<ScenarioStats | null>(null)
-
-  useEffect(() => {
-    const loadStats = async () => {
-      const stats = await fetchScenarioStats()
-      setScenarioStats(stats)
-    }
-    loadStats()
-    const interval = setInterval(loadStats, 10000)
-    return () => clearInterval(interval)
-  }, [])
+  const scenarioStats = STATIC_SCENARIO_STATS
 
   const formatRate = (count: number, total: number) => {
     if (total === 0) return "—"
@@ -319,10 +302,6 @@ export function ExperimentDesign() {
   }
 
   const getHighlights = (promptId: string) => {
-    if (!scenarioStats) {
-      return [{ label: "Loading...", value: "—", color: "text-white/40" }]
-    }
-
     switch (promptId) {
       case "overt":
         return [
